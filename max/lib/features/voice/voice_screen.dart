@@ -245,7 +245,7 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     return cleaned;
   }
 
-  void _onSTTDone() {
+  Future<void> _onSTTDone() async {
     if (_transcribedText.isEmpty) {
       setState(() {
         _voiceState = VoiceState.idle;

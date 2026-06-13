@@ -23,21 +23,18 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import com.google.firebase.firestore.FirebaseFirestore
 
 class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
     private var activity: Activity? = null
-    private lateinit var firestore: FirebaseFirestore
     private lateinit var sharedPrefs: SharedPreferences
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "com.example.max/control")
         channel.setMethodCallHandler(this)
         context = flutterPluginBinding.applicationContext
-        firestore = FirebaseFirestore.getInstance()
         sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
     }
 
@@ -180,25 +177,6 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
                 }
             }
             
-                        "saveData" -> {
-                val collection = call.argument<String>("collection") ?: ""
-                val data = call.argument<Map<String, Any>>("data") ?: emptyMap()
-                val docId = call.argument<String>("docId")
-                if (collection.isEmpty()) {
-                    result.error("FIRESTORE_ERROR", "Collection name required", null)
-                } else {
-                    val collRef = firestore.collection(collection)
-                    if (!docId.isNullOrEmpty()) {
-                        collRef.document(docId).set(data)
-                            .addOnSuccessListener { result.success(true) }
-                            .addOnFailureListener { e -> result.error("FIRESTORE_ERROR", e.message, null) }
-                    } else {
-                        collRef.add(data)
-                            .addOnSuccessListener { result.success(true) }
-                            .addOnFailureListener { e -> result.error("FIRESTORE_ERROR", e.message, null) }
-                    }
-                }
-            }
             "setUserName" -> {
                 val name = call.argument<String>("name") ?: ""
                 setUserName(name)
@@ -220,7 +198,7 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
             "getFullName" -> {
                 result.success(getFullName())
             }
-            }
+            else -> result.notImplemented()
         }
     }
 
