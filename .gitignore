@@ -1,0 +1,72 @@
+# Python virtual environments & packages
+.venv/
+venv/
+env/
+ENV/
+bin/
+lib/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Python cache & testing
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.noserc
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Flutter/Dart build and tool directories
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Android build and local configuration
+max/android/.gradle/
+max/android/local.properties
+max/android/app/google-services.json
+max/android/app/src/main/assets/
+max/build/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment and sensitive keys
+.env
+.env.*
+*.pem
+*.key
+firebase-key.json
+firebase_key.json
+service-account.json
+service_account.json
+secret-*.json
+*.json.enc
+
+# OS temporary files
+.DS_Store
+Thumbs.db
