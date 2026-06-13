@@ -86,6 +86,11 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 val scheduled = com.example.max.max.services.MaxAccessibilityService.scheduleMessageSend(text)
                 result.success(scheduled)
             }
+            "callPhone" -> {
+                val phoneNumber = call.argument<String>("phoneNumber") ?: ""
+                val called = callPhone(phoneNumber)
+                result.success(called)
+            }
             else -> {
                 result.notImplemented()
             }
@@ -99,6 +104,28 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, flags)
         } else if (direction == "down") {
             audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, flags)
+        }
+    }
+
+    private fun callPhone(phoneNumber: String): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$phoneNumber")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = Uri.parse("tel:$phoneNumber")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                true
+            } catch (ex: Exception) {
+                false
+            }
         }
     }
 
