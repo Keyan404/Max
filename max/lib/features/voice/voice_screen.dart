@@ -184,6 +184,36 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     if (result.finalResult) _onSTTDone();
   }
 
+  String _correctTranscription(String text) {
+    String cleaned = text.trim();
+    
+    final corrections = {
+      r'\bhe\s+mai\b': 'hey max',
+      r'\bhe\s+my\b': 'hey max',
+      r'\bhey\s+mai\b': 'hey max',
+      r'\bhey\s+my\b': 'hey max',
+      r'\bhay\s+max\b': 'hey max',
+      r'\bhe\s+max\b': 'hey max',
+      r'\bhey\s+mask\b': 'hey max',
+      r'\bhem\s+ax\b': 'hey max',
+      r'\bjarves\b': 'jarvis',
+      r'\bgarvis\b': 'jarvis',
+      r'\bopen\s+whitey\b': 'open yt',
+      r'\bopen\s+white\s*tea\b': 'open yt',
+      r'\bopen\s+y\s*t\b': 'open yt',
+      r'\bcall\s+abba\b': 'call baba',
+      r'\bcall\s+apa\b': 'call baba',
+    };
+
+    for (final pattern in corrections.keys) {
+      final regExp = RegExp(pattern, caseSensitive: false);
+      if (regExp.hasMatch(cleaned)) {
+        cleaned = cleaned.replaceAllMapped(regExp, (match) => corrections[pattern]!);
+      }
+    }
+    return cleaned;
+  }
+
   void _onSTTDone() {
     if (_transcribedText.isEmpty) {
       setState(() {
@@ -193,12 +223,15 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
       return;
     }
 
+    final correctedText = _correctTranscription(_transcribedText);
+
     setState(() {
       _voiceState = VoiceState.thinking;
       _amplitude = 0.1;
+      _transcribedText = correctedText;
     });
 
-    _sendToAI(_transcribedText);
+    _sendToAI(correctedText);
   }
 
   // ─────────────────────────────────────────────────────────

@@ -113,7 +113,8 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
             "callPhone" -> {
                 val phoneNumber = call.argument<String>("phoneNumber") ?: ""
                 val called = callPhone(phoneNumber)
-                result.success(called)
+                val reply = if (called) "hey Max, I called $phoneNumber" else "hey Max, could not call $phoneNumber"
+                result.success(reply)
             }
             else -> {
                 result.notImplemented()
