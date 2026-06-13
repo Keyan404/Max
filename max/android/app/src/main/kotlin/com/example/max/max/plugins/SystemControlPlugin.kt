@@ -7,6 +7,11 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.content.ComponentName
+import android.accessibilityservice.AccessibilityService
+import android.app.Activity
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import com.example.max.max.services.MaxFloatingBubbleService
 import com.example.max.max.services.MaxForegroundService
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -14,10 +19,11 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
+    private var activity: Activity? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "com.example.max/control")
@@ -27,6 +33,22 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activity = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivity() {
+        activity = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -67,15 +89,17 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 result.success(true)
             }
             "isAccessibilityEnabled" -> {
-                val enabled = com.example.max.max.services.MaxAccessibilityService.isServiceRunning()
+                val enabled = isAccessibilityServiceEnabled(context, com.example.max.max.services.MaxAccessibilityService::class.java)
                 result.success(enabled)
             }
             "openAccessibilitySettings" -> {
                 try {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    val launchContext = activity ?: context
+                    if (launchContext == context) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(intent)
+                    launchContext.startActivity(intent)
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("ACCESSIBILITY_ERROR", e.message, null)
@@ -127,6 +151,25 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 false
             }
         }
+    }
+
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
+        val expectedComponentName = ComponentName(context, service)
+        val enabledServicesSetting = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServicesSetting)
+        while (colonSplitter.hasNext()) {
+            val componentNameString = colonSplitter.next()
+            val enabledService = ComponentName.unflattenFromString(componentNameString)
+            if (enabledService != null && enabledService == expectedComponentName) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun toggleFlashlight(state: Boolean) {
