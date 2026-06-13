@@ -106,7 +106,7 @@ class GroqService:
                         yield "data: " + json.dumps({"error": f"Groq API error: {response.status_code}"}) + "\n\n"
                         return
 
-                    async for line in response.iter_lines():
+                    async for line in response.aiter_lines():
                         if not line:
                             continue
                         if line.startswith("data: "):
