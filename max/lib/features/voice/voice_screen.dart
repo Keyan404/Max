@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:go_router/go_router.dart';
@@ -44,6 +45,18 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
 
   // ── Amplitude for wave painter (0.0 → 1.0) ───────────────
   double _amplitude = 0.05;
+
+  // ── Platform channel for border animation ────────────────
+  static const _platform = MethodChannel('com.example.max/control');
+
+  // ─────────────────────────────────────────────────────────
+  // Border wave mode helper  (user=blue, max=red, idle=off)
+  // ─────────────────────────────────────────────────────────
+  Future<void> _setBorderMode(String mode) async {
+    try {
+      await _platform.invokeMethod('setBorderMode', {'mode': mode});
+    } catch (_) {}
+  }
 
   // ─────────────────────────────────────────────────────────
   // Init
@@ -133,16 +146,25 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     await _tts.setVolume(1.0);
 
     _tts.setStartHandler(() {
-      if (mounted) setState(() => _voiceState = VoiceState.speaking);
+      if (mounted) {
+        setState(() => _voiceState = VoiceState.speaking);
+        _setBorderMode('max'); // 🔴 red — MAX is speaking
+      }
     });
     _tts.setCompletionHandler(() {
-      if (mounted) setState(() {
-        _voiceState = VoiceState.idle;
-        _amplitude = 0.05;
-      });
+      if (mounted) {
+        setState(() {
+          _voiceState = VoiceState.idle;
+          _amplitude = 0.05;
+        });
+        _setBorderMode('idle'); // border off
+      }
     });
     _tts.setErrorHandler((msg) {
-      if (mounted) setState(() => _voiceState = VoiceState.idle);
+      if (mounted) {
+        setState(() => _voiceState = VoiceState.idle);
+        _setBorderMode('idle');
+      }
     });
   }
 
@@ -150,7 +172,14 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   // STT control
   // ─────────────────────────────────────────────────────────
   Future<void> _startListening() async {
-    if (!_sttAvailable || _voiceState != VoiceState.idle) return;
+    if (!_sttAvailable) return;
+
+    // If already doing something, abort first
+    if (_voiceState != VoiceState.idle) {
+      await _abort();
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
     await _tts.stop();
 
     setState(() {
@@ -159,6 +188,7 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
       _responseText = '';
       _amplitude = 0.4;
     });
+    _setBorderMode('user'); // 🔵 blue — user is speaking
 
     await _stt.listen(
       onResult: _onSpeechResult,
@@ -171,6 +201,7 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
 
   Future<void> _stopListening() async {
     await _stt.stop();
+    _setBorderMode('idle'); // border off while thinking
     _onSTTDone();
   }
 
@@ -224,6 +255,56 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     }
 
     final correctedText = _correctTranscription(_transcribedText);
+    final lowerText = correctedText.toLowerCase().trim();
+
+    // ── Wake word: "max wakeup" or "hey max" → start listening again ──
+    if (lowerText == 'max wakeup' ||
+        lowerText == 'hey max' ||
+        lowerText == 'max wake up') {
+      setState(() {
+        _transcribedText = correctedText;
+        _responseText = '';
+        _voiceState = VoiceState.idle;
+        _amplitude = 0.05;
+      });
+      // Small delay then auto-start listening
+      Future.delayed(const Duration(milliseconds: 300), _startListening);
+      return;
+    }
+
+    // ── Shutdown: "max shutdown" / "max sleep" / "max stop" ──
+    if (lowerText.contains('max shutdown') ||
+        lowerText.contains('max sleep') ||
+        lowerText.contains('max stop')) {
+      setState(() {
+        _voiceState = VoiceState.idle;
+        _transcribedText = '';
+        _responseText = 'MAX is going to sleep. Tap the orb to wake me.';
+        _amplitude = 0.05;
+      });
+      if (!_isMuted) {
+        _tts.speak('Going to sleep. Tap the orb to wake me.');
+      }
+      return;
+    }
+
+    // ── Lock phone instantly ──
+    if (lowerText.contains('lock') && (lowerText.contains('phone') || lowerText.contains('screen'))) {
+      setState(() {
+        _voiceState = VoiceState.idle;
+        _transcribedText = correctedText;
+        _responseText = 'Locking the phone...';
+        _amplitude = 0.05;
+      });
+      try {
+        const platform = MethodChannel('com.example.max/control');
+        await platform.invokeMethod('lockPhone');
+      } catch (_) {}
+      if (!_isMuted) {
+        await _tts.speak('Locking your phone now.');
+      }
+      return;
+    }
 
     setState(() {
       _voiceState = VoiceState.thinking;
@@ -287,6 +368,7 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   Future<void> _abort() async {
     await _stt.stop();
     await _tts.stop();
+    _setBorderMode('idle'); // border off on abort
     setState(() {
       _voiceState = VoiceState.idle;
       _transcribedText = '';
@@ -422,6 +504,9 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
           _startListening();
         } else if (_voiceState == VoiceState.listening) {
           _stopListening();
+        } else {
+          // thinking or speaking → abort and go back to idle
+          _abort();
         }
       },
       child: AnimatedBuilder(
@@ -657,13 +742,13 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   String _getHintText() {
     switch (_voiceState) {
       case VoiceState.idle:
-        return '"Max, what\'s on my screen?" or "Turn on flashlight"';
+        return 'Tap orb to speak  •  Say "Max wakeup" to activate  •  "Max shutdown" to sleep';
       case VoiceState.listening:
-        return 'Tap the orb to stop and process';
+        return 'Tap the orb to stop  •  Say "Max shutdown" to sleep';
       case VoiceState.thinking:
         return 'MAX is processing your request...';
       case VoiceState.speaking:
-        return 'Tap Abort to stop playback';
+        return 'Tap orb to abort  •  Listening again after response';
     }
   }
 }

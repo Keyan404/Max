@@ -194,6 +194,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
           await platform.invokeMethod('scheduleAutomation', {'text': param});
         } else if (action == 'callPhone') {
           await platform.invokeMethod('callPhone', {'phoneNumber': param});
+        } else if (action == 'lockPhone') {
+          await platform.invokeMethod('lockPhone');
         }
       } catch (e) {
         // Handled silently

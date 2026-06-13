@@ -39,6 +39,19 @@ class MaxAccessibilityService : AccessibilityService() {
         fun isServiceRunning(): Boolean {
             return instance != null
         }
+
+        /**
+         * Locks the device screen using AccessibilityService global action.
+         * Requires API 28+ (Android 9).
+         */
+        fun lockScreen(): Boolean {
+            val service = instance
+            if (service == null) {
+                Log.e(TAG, "Cannot lock: Accessibility Service is not running/connected.")
+                return false
+            }
+            return service.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+        }
     }
 
     override fun onServiceConnected() {

@@ -90,21 +90,13 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
   }
 
   Future<void> _requestAccessibility() async {
-    // Open accessibility settings directly
+    // Directly open Android Accessibility Settings
     try {
       await platform.invokeMethod('openAccessibilitySettings');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enable "MAX Operating System Assistant" in Accessibility Services.'),
-            duration: Duration(seconds: 6),
-          ),
-        );
-      }
-    } catch (e) {
-      // fallback
+    } catch (_) {
+      // Fallback: open general Settings
       try {
-        await platform.invokeMethod('launchApp', {'packageName': 'com.android.settings'});
+        await platform.invokeMethod('openSettingsPanel');
       } catch (_) {}
     }
   }
@@ -292,7 +284,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.glassBox(),
+      decoration: AppTheme.glassBox().copyWith(
+        border: Border.all(
+          color: isGranted
+              ? AppColors.glowingGreen.withOpacity(0.4)
+              : AppColors.glassBorder,
+          width: 1.2,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -312,34 +311,45 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isGranted 
-                    ? AppColors.glowingGreen.withOpacity(0.1) 
-                    : Colors.redAccent.withOpacity(0.1),
+                  color: isGranted
+                      ? AppColors.glowingGreen.withOpacity(0.15)
+                      : Colors.redAccent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isGranted ? AppColors.glowingGreen : Colors.redAccent,
                     width: 1,
                   ),
                 ),
-                child: Text(
-                  isGranted ? "ACTIVE" : "DISABLED",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: isGranted ? AppColors.glowingGreen : Colors.redAccent,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isGranted ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      size: 11,
+                      color: isGranted ? AppColors.glowingGreen : Colors.redAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isGranted ? 'ACTIVE' : 'DISABLED',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isGranted ? AppColors.glowingGreen : Colors.redAccent,
+                      ),
+                    ),
+                  ],
                 ),
               )
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            "Why Needed: $whyNeeded",
+            'Why Needed: $whyNeeded',
             style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 6),
           Text(
-            "Benefit: $benefit",
+            'Benefit: $benefit',
             style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 6),
@@ -350,29 +360,53 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  "Privacy: $privacy",
-                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                  'Privacy: $privacy',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          if (!isGranted)
+          if (isGranted)
+            // Show green confirmation row when active
+            Row(
+              children: [
+                const Icon(Icons.verified_rounded,
+                    size: 16, color: AppColors.glowingGreen),
+                const SizedBox(width: 6),
+                Text(
+                  'Permission granted — MAX is using this access.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.glowingGreen.withOpacity(0.85),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            )
+          else
             SizedBox(
               width: double.infinity,
-              height: 38,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
+              height: 42,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.electricCyan.withOpacity(0.12),
+                  foregroundColor: AppColors.electricCyan,
                   side: const BorderSide(color: AppColors.electricCyan, width: 1.2),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
+                  elevation: 0,
                 ),
                 onPressed: onPressed,
-                child: const Text(
-                  "Grant Access",
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text(
+                  'Grant Access',
                   style: TextStyle(
-                    color: AppColors.electricCyan,
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),

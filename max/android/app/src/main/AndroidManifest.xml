@@ -50,6 +50,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Screen Edge Wave Border Animation Overlay -->
+        <service
+            android:name=".services.MaxBorderAnimService"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Messaging Automation Accessibility Service -->
         <service
             android:name=".services.MaxAccessibilityService"

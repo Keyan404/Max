@@ -1,15 +1,20 @@
 package com.example.max.max.plugins
 
+import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.content.ComponentName
 import android.accessibilityservice.AccessibilityService
 import android.app.Activity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import com.example.max.max.services.MaxFloatingBubbleService
@@ -18,17 +23,22 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import com.google.firebase.firestore.FirebaseFirestore
 
 class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
     private lateinit var channel: MethodChannel
     private lateinit var context: Context
     private var activity: Activity? = null
+    private lateinit var firestore: FirebaseFirestore
+    private lateinit var sharedPrefs: SharedPreferences
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "com.example.max/control")
         channel.setMethodCallHandler(this)
         context = flutterPluginBinding.applicationContext
+        firestore = FirebaseFirestore.getInstance()
+        sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -60,8 +70,19 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
             }
             "toggleFlashlight" -> {
                 val state = call.argument<Boolean>("state") ?: false
-                toggleFlashlight(state)
-                result.success(true)
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                    activity?.let {
+                        ActivityCompat.requestPermissions(
+                            it,
+                            arrayOf(Manifest.permission.CAMERA),
+                            1001
+                        )
+                    }
+                    result.error("PERMISSION_DENIED", "Camera permission not granted", null)
+                } else {
+                    toggleFlashlight(state)
+                    result.success(true)
+                }
             }
             "launchApp" -> {
                 val packageName = call.argument<String>("packageName") ?: ""
@@ -70,8 +91,20 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
             }
             "toggleBubble" -> {
                 val enable = call.argument<Boolean>("state") ?: false
-                toggleBubbleService(enable)
-                result.success(true)
+                if (!Settings.canDrawOverlays(context)) {
+                    // Request overlay permission
+                    activity?.let {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + context.packageName)
+                        )
+                        it.startActivity(intent)
+                    }
+                    result.error("OVERLAY_DENIED", "Overlay permission not granted", null)
+                } else {
+                    toggleBubbleService(enable)
+                    result.success(true)
+                }
             }
             "toggleForegroundService" -> {
                 val enable = call.argument<Boolean>("state") ?: false
@@ -116,8 +149,77 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
                 val reply = if (called) "hey Max, I called $phoneNumber" else "hey Max, could not call $phoneNumber"
                 result.success(reply)
             }
-            else -> {
-                result.notImplemented()
+            "lockPhone" -> {
+                val locked = com.example.max.max.services.MaxAccessibilityService.lockScreen()
+                if (locked) {
+                    result.success("Phone locked")
+                } else {
+                    result.error("LOCK_ERROR", "Accessibility service not active. Please enable it in Settings.", null)
+                }
+            }
+            "setBorderMode" -> {
+                val mode = call.argument<String>("mode") ?: "idle"
+                if (!Settings.canDrawOverlays(context)) {
+                    result.error("OVERLAY_DENIED", "Overlay permission not granted", null)
+                } else {
+                    val intent = Intent(context, com.example.max.max.services.MaxBorderAnimService::class.java).apply {
+                        action = com.example.max.max.services.MaxBorderAnimService.ACTION_START
+                        putExtra(com.example.max.max.services.MaxBorderAnimService.EXTRA_MODE, mode)
+                    }
+                    if (mode == "idle") {
+                        // Stop border service when idle
+                        context.stopService(Intent(context, com.example.max.max.services.MaxBorderAnimService::class.java))
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                    }
+                    result.success(true)
+                }
+            }
+            
+                        "saveData" -> {
+                val collection = call.argument<String>("collection") ?: ""
+                val data = call.argument<Map<String, Any>>("data") ?: emptyMap()
+                val docId = call.argument<String>("docId")
+                if (collection.isEmpty()) {
+                    result.error("FIRESTORE_ERROR", "Collection name required", null)
+                } else {
+                    val collRef = firestore.collection(collection)
+                    if (!docId.isNullOrEmpty()) {
+                        collRef.document(docId).set(data)
+                            .addOnSuccessListener { result.success(true) }
+                            .addOnFailureListener { e -> result.error("FIRESTORE_ERROR", e.message, null) }
+                    } else {
+                        collRef.add(data)
+                            .addOnSuccessListener { result.success(true) }
+                            .addOnFailureListener { e -> result.error("FIRESTORE_ERROR", e.message, null) }
+                    }
+                }
+            }
+            "setUserName" -> {
+                val name = call.argument<String>("name") ?: ""
+                setUserName(name)
+                result.success(true)
+            }
+            "getUserName" -> {
+                val stored = getUserName()
+                result.success(stored)
+            }
+            "setSirName" -> {
+                val sir = call.argument<String>("sir") ?: ""
+                setSirName(sir)
+                result.success(true)
+            }
+            "getSirName" -> {
+                val stored = getSirName()
+                result.success(stored)
+            }
+            "getFullName" -> {
+                result.success(getFullName())
+            }
             }
         }
     }
@@ -183,7 +285,24 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
         }
     }
 
-    private fun launchApp(packageName: String): Boolean {
+    // Resolve common app names to package identifiers
+    private fun resolvePackageName(name: String): String? {
+        val lower = name.lowercase()
+        val map = mapOf(
+            "youtube" to "com.google.android.youtube",
+            "instagram" to "com.instagram.android",
+            "whatsapp" to "com.whatsapp",
+            "facebook" to "com.facebook.katana",
+            "twitter" to "com.twitter.android",
+            "maps" to "com.google.android.apps.maps"
+        )
+        // Return mapped package name or assume the provided string is already a package name
+        return map[lower] ?: name
+    }
+
+    private fun launchApp(appIdentifier: String): Boolean {
+        // Resolve possible friendly name to a package name
+        val packageName = resolvePackageName(appIdentifier) ?: return false
         return try {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
@@ -191,7 +310,7 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
                 context.startActivity(intent)
                 true
             } else {
-                // If package not found, launch settings / browser panel as fallback
+                // Package not found
                 false
             }
         } catch (e: Exception) {
@@ -202,8 +321,21 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     private fun toggleBubbleService(enable: Boolean) {
         val intent = Intent(context, MaxFloatingBubbleService::class.java)
         if (enable) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(context)) {
-                context.startService(intent)
+            if (Settings.canDrawOverlays(context)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } else {
+                // Request overlay permission
+                activity?.let {
+                    val permissionIntent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + context.packageName)
+                    )
+                    it.startActivity(permissionIntent)
+                }
             }
         } else {
             context.stopService(intent)
@@ -266,6 +398,30 @@ class SystemControlPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
                 || Build.MANUFACTURER.contains("Genymotion")
                 || Build.PRODUCT.indexOf("sdk_google") != -1
     }
+    // sharedPrefs initialized in onAttachedToEngine
+
+    private fun setUserName(name: String) {
+        sharedPrefs.edit().putString("user_name", name).apply()
+    }
+
+    private fun getUserName(): String {
+        return sharedPrefs.getString("user_name", "") ?: ""
+    }
+
+    private fun setSirName(sir: String) {
+        sharedPrefs.edit().putString("sir_name", sir).apply()
+    }
+
+    private fun getSirName(): String {
+        return sharedPrefs.getString("sir_name", "") ?: ""
+    }
+
+    private fun getFullName(): String {
+        val first = getUserName()
+        val sir = getSirName()
+        return if (first.isNotBlank() && sir.isNotBlank()) "$first $sir" else first + sir
+    }
+
 }
 
 // Simple Log import helper

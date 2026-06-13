@@ -27,17 +27,16 @@ class MaxForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
-        if (action == "STOP_SERVICE") {
+        // Stop action from notification button
+        if (intent?.action == "STOP_SERVICE") {
+            stopForeground(true)
             stopSelf()
             return START_NOT_STICKY
         }
 
-        // Setup persistent notification
         val notification = createNotification()
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Under Android 14/15, we must declare the specific types (microphone & mediaProjection)
             var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
@@ -58,33 +57,43 @@ class MaxForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotification(): Notification {
+        // Tap notification → open app
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // "Stop" action → stop service
         val stopIntent = Intent(this, MaxForegroundService::class.java).apply {
             action = "STOP_SERVICE"
         }
         val stopPendingIntent = PendingIntent.getService(
-            this, 
-            0, 
-            stopIntent, 
+            this,
+            1,
+            stopIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val openAppIntent = Intent(this, MainActivity::class.java)
-        val openAppPendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            openAppIntent, 
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("MAX AI Operating System")
-            .setContentText("MAX is active in the background and listening.")
+            .setContentTitle("MAX AI is running")
+            .setContentText("Tap to open  •  Tap Stop to shut down")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentIntent(openAppPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Shut Down", stopPendingIntent)
+            .setContentIntent(openAppPendingIntent)   // tap → open app
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop",
+                stopPendingIntent                      // Stop button → stop service
+            )
             .setOngoing(true)
+            .setAutoCancel(false)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 
@@ -95,7 +104,8 @@ class MaxForegroundService : Service() {
                 "MAX Background Services",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Keeps the MAX assistant wake detector running."
+                description = "Keeps MAX assistant running in the background."
+                setShowBadge(false)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
@@ -108,7 +118,7 @@ class MaxForegroundService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "MAX::BackgroundWakeLock"
         ).apply {
-            acquire(10 * 60 * 1000L /*10 minutes fallback*/)
+            acquire(30 * 60 * 1000L /* 30 minutes max */)
         }
     }
 
